@@ -1,1 +1,1 @@
-First attemp at learning ray-tracing. Using the raytracinginoneweekend book.
+First attempt at learning ray-tracing. Using the raytracinginoneweekend book.
