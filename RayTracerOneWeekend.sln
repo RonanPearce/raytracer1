@@ -5,6 +5,8 @@ VisualStudioVersion = 15.0.27428.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RayTracerOneWeekend", "RayTracerOneWeekend\RayTracerOneWeekend.vcxproj", "{F95EF560-4969-42E3-A19F-B992F98EAA56}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SDLTracer", "SDLTracer\SDLTracer.vcxproj", "{7F445E5A-88AB-4251-93B5-4088B51A8A75}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +23,14 @@ Global
 		{F95EF560-4969-42E3-A19F-B992F98EAA56}.Release|x64.Build.0 = Release|x64
 		{F95EF560-4969-42E3-A19F-B992F98EAA56}.Release|x86.ActiveCfg = Release|Win32
 		{F95EF560-4969-42E3-A19F-B992F98EAA56}.Release|x86.Build.0 = Release|Win32
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Debug|x64.ActiveCfg = Debug|x64
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Debug|x64.Build.0 = Debug|x64
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Debug|x86.ActiveCfg = Debug|Win32
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Debug|x86.Build.0 = Debug|Win32
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Release|x64.ActiveCfg = Release|x64
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Release|x64.Build.0 = Release|x64
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Release|x86.ActiveCfg = Release|Win32
+		{7F445E5A-88AB-4251-93B5-4088B51A8A75}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
