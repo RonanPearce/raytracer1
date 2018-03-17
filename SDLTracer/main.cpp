@@ -7,7 +7,10 @@
 #include "camera.h"
 #include <cfloat>
 #include <thread>
+#include <mutex>
+#include <atomic>
 #include <vector>
+#include <deque>
 #include <conio.h>
 #include <chrono>
 #include <cstdio>
@@ -21,11 +24,12 @@
 
 const int nx = 320;
 const int ny = 160;
-const int ns = 25;
+const int ns = 100;
 const int MAX_BOUNCES = 4;
-const int NUM_THREADS = 8;
-const int TILE_MAX_HEIGHT = 64;
-const int TILE_MAX_WIDTH = 64;
+const int NUM_THREADS = 12;
+const int TILE_MAX_HEIGHT = 32;
+const int TILE_MAX_WIDTH = 32;
+const bool DO_ANIMATE = false;
 
 struct Tile
 {
@@ -35,6 +39,50 @@ struct Tile
 	int height;
 };
 
+struct JobInfo
+{
+	std::function<void(int, int)> fn;
+	int tileIndex;
+	int n;
+	bool stop;
+};
+
+std::vector<std::thread> threads;
+std::mutex jobMutex;
+std::mutex jobDoneMutex;
+std::condition_variable jobQueueCondition;
+std::condition_variable jobsDoneCondition;
+std::deque<JobInfo> jobQueue;
+std::atomic<int> remainingJobs = 0;
+
+void runThread() {
+	while (true) {
+		JobInfo job;
+		{
+			std::unique_lock<std::mutex> lock(jobMutex);
+			jobQueueCondition.wait(lock, [] {return !jobQueue.empty(); });
+			job = jobQueue.front();
+			jobQueue.pop_front();
+		}
+		if (job.stop) {
+			remainingJobs--;
+			jobsDoneCondition.notify_one();
+			return;
+		}
+		job.fn(job.tileIndex, job.n);
+		remainingJobs--;
+		jobsDoneCondition.notify_one();
+	}
+}
+
+void addJob(const JobInfo & newJob) {
+	//std::cout << "Adding job: " << newJob.tileIndex << ", " << newJob.n << std::endl;
+	std::unique_lock<std::mutex> lock(jobMutex);
+	remainingJobs++;
+	jobQueue.push_back(newJob);
+	jobQueueCondition.notify_one();
+}
+
 
 inline double drand48() {
 	return double(rand()) / double(RAND_MAX);
@@ -42,21 +90,20 @@ inline double drand48() {
 
 vec3 random_in_unit_sphere() {
 	vec3 p;
-	do
-	{
+	do {
 		p = 2.0f * vec3(float(drand48()), float(drand48()), float(drand48())) - vec3(1.0f, 1.0f, 1.0f);
 	} while (p.squared_length() >= 1.0f);
 	return p;
 }
 
-vec3 color(const int maxBounces, const ray& r, hitable *world) {
+vec3 color(const int curBounce, const ray& r, hitable *world) {
 	hit_record rec;
 	if (world->hit(r, 0.001f, FLT_MAX, rec)) {
-		if (maxBounces > MAX_BOUNCES) {
+		if (curBounce > MAX_BOUNCES) {
 			return vec3(0.0f, 0.0f, 0.0f);
 		}
 		vec3 target = rec.p + rec.normal + random_in_unit_sphere();
-		return 0.5f * color(maxBounces + 1, ray(rec.p, target - rec.p), world);
+		return 0.5f * color(curBounce + 1, ray(rec.p, target - rec.p), world);
 	}
 	else {
 		vec3 unit_direction = unit_vector(r.direction());
@@ -78,6 +125,7 @@ vec3 resultBuffer[nx *ny];
 std::vector<Tile> tiles;
 
 void task(int tileIndex, int n) {
+
 	//std::cout << "TileSpan: " << tileIndex << "," << tileIndex + n << std::endl;
 	for (int i = tileIndex; i < tileIndex + n; i++) {
 		const Tile& tile = tiles[i];
@@ -122,9 +170,6 @@ void writeOutput() {
 	for (int j = ny-1; j >=0; j--) {
 		for (int i = 0; i < nx; i++) {
 			auto & col = resultBuffer[j * nx + i];
-			//int ir = int(255.99 * sqrt(col[0]));
-			//int ig = int(255.99 * sqrt(col[1]));
-			//int ib = int(255.99 * sqrt(col[2]));
 			int ir = int(255.99 * (col[0]));
 			int ig = int(255.99 * (col[1]));
 			int ib = int(255.99 * (col[2]));
@@ -138,23 +183,12 @@ void writeOutput() {
 	//stbi_write_png("output.png", nx, ny, 3, outputData, nx * 3);
 }
 
-float delta = 0.0f;
-int render()
+void render()
 {
-	auto start = std::chrono::system_clock::now();
-
-	srand(start.time_since_epoch().count());
-
 	// Clear result
 	for (int i = 0; i < nx * ny; i++) {
 		resultBuffer[i].zero();
 	}
-
-	// Define scene hitables
-	delta += 0.05f;
-	list[0] = new sphere(vec3(0.0f, 0.0f, -1.0f), 0.5f, 0);
-	list[1] = new sphere(vec3(0.0f, -100.5f, -1.0f), 100.0f - delta, 0);
-	list[2] = new sphere(vec3(0.5f, 0.0f, -1.0f), 0.25f, 0);
 
 	const int divX = nx / TILE_MAX_WIDTH;
 	const int modX = nx % TILE_MAX_WIDTH;
@@ -164,46 +198,45 @@ int render()
 	const int numY = divY + (modY > 0 ? 1 : 0);
 
 	// Create tiles
-	for (int ty = 0; ty < numY; ty++) {
-		for (int tx = 0; tx < numX; tx++) {
-			Tile t;
-			t.left = tx * TILE_MAX_WIDTH;
-			t.width = tx >= divX ? modX : TILE_MAX_WIDTH;
-			t.top = ty * TILE_MAX_HEIGHT;
-			t.height = ty >= divY ? modY : TILE_MAX_HEIGHT;
-			tiles.push_back(t);
+	if (tiles.size() == 0) {
+		for (int ty = 0; ty < numY; ty++) {
+			for (int tx = 0; tx < numX; tx++) {
+				Tile t;
+				t.left = tx * TILE_MAX_WIDTH;
+				t.width = tx >= divX ? modX : TILE_MAX_WIDTH;
+				t.top = ty * TILE_MAX_HEIGHT;
+				t.height = ty >= divY ? modY : TILE_MAX_HEIGHT;
+				tiles.push_back(t);
+			}
 		}
 	}
 
-	// Assign tiles to threads
+	// Assign tiles to jobs
 	const int numTiles = numY * numX;
 	const int divTiles = numTiles / NUM_THREADS;
 	const int modTiles = numTiles % NUM_THREADS;
-	std::vector<std::thread> threads;
+
 	int curTile = 0;
 	int curThread = 0;
+	remainingJobs = 0;
 	for (; (curThread < modTiles) && (curTile < numTiles); ++curThread) {
-		threads.push_back(std::thread(task, curTile, 1 + divTiles));
+		JobInfo jobInfo;
+		jobInfo.fn = task;
+		jobInfo.stop = false;
+		jobInfo.tileIndex = curTile;
+		jobInfo.n = 1 + divTiles;
+		addJob(jobInfo);
 		curTile += 1 + divTiles;
 	}
 	for (; (curThread < NUM_THREADS) && (curTile < numTiles); ++curThread) {
-		threads.push_back(std::thread(task, curTile, divTiles));
+		JobInfo jobInfo;
+		jobInfo.fn = task;
+		jobInfo.stop = false;
+		jobInfo.tileIndex = curTile;
+		jobInfo.n = divTiles;
+		addJob(jobInfo);
 		curTile += divTiles;
 	}
-
-	// Run threads
-	for (int it = 0; it < threads.size(); ++it) {
-		auto& th = threads[it];
-		th.join();
-	}
-	auto end = std::chrono::system_clock::now();
-	std::chrono::duration<double> elapsed_seconds = end - start;
-
-	writeOutput();
-
-	//std::cout << "Time taken: " << elapsed_seconds.count() << std::endl
-	//	<< "Press any key to continue..." << std::endl;
-	//_getch();
 }
 
 
@@ -227,15 +260,65 @@ int main(int argc, char* argv[]) {
 	SDL_Texture *Tile = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
 		SDL_TEXTUREACCESS_STREAMING, nx, ny);
 
-	for (int i = 0; i < 500; ++i) {
-		render();
+	for (int i = 0; i < NUM_THREADS; i++)
+	{
+		threads.push_back(std::thread(runThread));
+	}
 
+	auto start = std::chrono::system_clock::now();
+
+	//srand(start.time_since_epoch().count());
+
+	list[0] = new sphere(vec3(0.0f, 0.0f, -1.0f), 0.5f, 0);
+	list[1] = new sphere(vec3(0.0f, -100.5f, -1.0f), 100.0f, 0);
+	list[2] = new sphere(vec3(0.5f, 0.0f, -1.0f), 0.25f, 0);
+
+	SDL_Event ev;
+	bool quit = false;
+	render();
+	while (!quit) {
+		while (SDL_PollEvent(&ev)) {
+			switch (ev.type) {
+			case SDL_KEYDOWN:
+				break;
+
+			case SDL_QUIT:
+				quit = true;
+				break;
+			}
+		}
+		if (DO_ANIMATE) {
+			render();
+		}
+		{
+			std::unique_lock<std::mutex> lock(jobDoneMutex);
+			jobsDoneCondition.wait(lock, []() {return remainingJobs.load() == 0; });
+		}
+		writeOutput();
 		SDL_UpdateTexture(Tile, NULL, outputData, nx * 4);
 
 		SDL_RenderCopy(renderer, Tile, NULL, NULL);
 		SDL_RenderPresent(renderer);
-		SDL_Delay(10);
 	}
+
+	// Stop jobs
+	JobInfo jobInfo;
+	for (int i = 0; i < NUM_THREADS; i++) {
+		JobInfo jobInfo;
+		jobInfo.stop = true;
+		addJob(jobInfo);
+	}
+	for (int i = 0; i < NUM_THREADS; i++)
+	{
+		threads[i].join();
+	}
+
+	auto end = std::chrono::system_clock::now();
+	std::chrono::duration<double> elapsed_seconds = end - start;
+
+	//std::cout << "Time taken: " << elapsed_seconds.count() << std::endl
+	//	<< "Press any key to continue..." << std::endl;
+	//_getch();
 
 	//Clean up
 	SDL_DestroyTexture(Tile);
