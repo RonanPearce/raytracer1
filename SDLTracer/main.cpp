@@ -5,6 +5,9 @@
 #include "sphere.h"
 #include "hitable_list.h"
 #include "camera.h"
+#include "metal.h"
+#include "lambertian.h"
+#include "dielectric.h"
 #include <cfloat>
 #include <thread>
 #include <mutex>
@@ -13,8 +16,7 @@
 #include <deque>
 #include <conio.h>
 #include <chrono>
-#include <cstdio>
-#include <cstring>
+#include "utils.h"
 
 #define STBI_MSC_SECURE_CRT
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -22,11 +24,11 @@
 #include "stb_image_write.h"
 
 
-const int nx = 320;
-const int ny = 160;
+const int nx = 640;
+const int ny = 320;
 const int ns = 100;
-const int MAX_BOUNCES = 4;
-const int NUM_THREADS = 12;
+const int MAX_BOUNCES = 50;
+const int NUM_THREADS = 10;
 const int TILE_MAX_HEIGHT = 32;
 const int TILE_MAX_WIDTH = 32;
 const bool DO_ANIMATE = false;
@@ -84,26 +86,17 @@ void addJob(const JobInfo & newJob) {
 }
 
 
-inline double drand48() {
-	return double(rand()) / double(RAND_MAX);
-}
-
-vec3 random_in_unit_sphere() {
-	vec3 p;
-	do {
-		p = 2.0f * vec3(float(drand48()), float(drand48()), float(drand48())) - vec3(1.0f, 1.0f, 1.0f);
-	} while (p.squared_length() >= 1.0f);
-	return p;
-}
-
-vec3 color(const int curBounce, const ray& r, hitable *world) {
+vec3 color(const ray& r, hitable *world, int curBounce) {
 	hit_record rec;
 	if (world->hit(r, 0.001f, FLT_MAX, rec)) {
-		if (curBounce > MAX_BOUNCES) {
+		ray scattered;
+		vec3 attenuation;
+		if (curBounce < MAX_BOUNCES && rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
+			return attenuation * color(scattered, world, curBounce + 1);
+		}
+		else {
 			return vec3(0.0f, 0.0f, 0.0f);
 		}
-		vec3 target = rec.p + rec.normal + random_in_unit_sphere();
-		return 0.5f * color(curBounce + 1, ray(rec.p, target - rec.p), world);
 	}
 	else {
 		vec3 unit_direction = unit_vector(r.direction());
@@ -117,8 +110,8 @@ vec3 lower_left_corner(-2.0f, -1.0f, -1.0f);
 vec3 horizontal(4.0f, 0.0f, 0.0f);
 vec3 vertical(0.0f, 2.0f, 0.0f);
 vec3 origin(0.0f, 0.0f, 0.0f);
-hitable *list[3];
-hitable *world = new hitable_list(list, 3);
+hitable *list[5];
+hitable *world = new hitable_list(list, 5);
 camera cam;
 
 vec3 resultBuffer[nx *ny];
@@ -148,7 +141,7 @@ void task(int tileIndex, int n) {
 					float v = float(j + drand48()) / float(ny);
 					ray r = cam.get_ray(u, v);
 					vec3 p = r.point_at_parameter(2.0f);
-					col += color(1, r, world);
+					col += color(r, world, 0);
 				}
 				col /= float(ns);
 				(*pBuff)[0] = col[0];
@@ -269,9 +262,11 @@ int main(int argc, char* argv[]) {
 
 	//srand(start.time_since_epoch().count());
 
-	list[0] = new sphere(vec3(0.0f, 0.0f, -1.0f), 0.5f, 0);
-	list[1] = new sphere(vec3(0.0f, -100.5f, -1.0f), 100.0f, 0);
-	list[2] = new sphere(vec3(0.5f, 0.0f, -1.0f), 0.25f, 0);
+	list[0] = new sphere(vec3(0.0f, 0.0f, -1.0f), 0.5f, new lambertian(vec3(0.1f, 0.2f, 0.5f)));
+	list[1] = new sphere(vec3(0.0f, -100.5f, -1.0f), 100.0f, new lambertian(vec3(0.8f, 0.8f, 0.0f)));
+	list[2] = new sphere(vec3(1.0f, 0.0f, -1.0f), 0.5f, new metal(vec3(0.8f, 0.6f, 0.2f), 0.0f));
+	list[3] = new sphere(vec3(-1.0f, 0.0f, -1.0f), 0.5f, new dielectric(1.5f));
+	list[4] = new sphere(vec3(-1.0f, 0.0f, -1.0f), -0.45f, new dielectric(1.5));
 
 	SDL_Event ev;
 	bool quit = false;
@@ -288,6 +283,8 @@ int main(int argc, char* argv[]) {
 			}
 		}
 		if (DO_ANIMATE) {
+			sphere* s1 = static_cast<sphere*>(list[2]);
+			s1->center[1] = s1->center.y() - 0.05f;
 			render();
 		}
 		{
