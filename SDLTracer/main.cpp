@@ -282,11 +282,6 @@ int main(int argc, char* argv[]) {
 				break;
 			}
 		}
-		if (DO_ANIMATE) {
-			sphere* s1 = static_cast<sphere*>(list[2]);
-			s1->center[1] = s1->center.y() - 0.05f;
-			render();
-		}
 		{
 			std::unique_lock<std::mutex> lock(jobDoneMutex);
 			jobsDoneCondition.wait(lock, []() {return remainingJobs.load() == 0; });
@@ -296,6 +291,12 @@ int main(int argc, char* argv[]) {
 
 		SDL_RenderCopy(renderer, Tile, NULL, NULL);
 		SDL_RenderPresent(renderer);
+
+		if (DO_ANIMATE) {
+			sphere* s1 = static_cast<sphere*>(list[2]);
+			s1->center[1] = s1->center.y() - 0.05f;
+			render();
+		}
 	}
 
 	// Stop jobs
