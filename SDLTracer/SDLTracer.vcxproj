@@ -140,6 +140,39 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="camera.h" />
+    <ClInclude Include="dielectric.h" />
+    <ClInclude Include="hitable.h" />
+    <ClInclude Include="hitable_list.h" />
+    <ClInclude Include="lambertian.h" />
+    <ClInclude Include="material.h" />
+    <ClInclude Include="metal.h" />
+    <ClInclude Include="ray.h" />
+    <ClInclude Include="sphere.h" />
+    <ClInclude Include="stb.h" />
+    <ClInclude Include="stb_connected_components.h" />
+    <ClInclude Include="stb_c_lexer.h" />
+    <ClInclude Include="stb_divide.h" />
+    <ClInclude Include="stb_dxt.h" />
+    <ClInclude Include="stb_easy_font.h" />
+    <ClInclude Include="stb_herringbone_wang_tile.h" />
+    <ClInclude Include="stb_image.h" />
+    <ClInclude Include="stb_image_resize.h" />
+    <ClInclude Include="stb_image_write.h" />
+    <ClInclude Include="stb_leakcheck.h" />
+    <ClInclude Include="stb_perlin.h" />
+    <ClInclude Include="stb_rect_pack.h" />
+    <ClInclude Include="stb_sprintf.h" />
+    <ClInclude Include="stb_textedit.h" />
+    <ClInclude Include="stb_tilemap_editor.h" />
+    <ClInclude Include="stb_truetype.h" />
+    <ClInclude Include="stb_voxel_render.h" />
+    <ClInclude Include="stretchy_buffer.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="utils.h" />
+    <ClInclude Include="vec3.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
