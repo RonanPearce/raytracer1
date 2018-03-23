@@ -24,14 +24,15 @@
 #include "stb_image_write.h"
 
 
-const int nx = 1200;
-const int ny = 800;
+const int nx = 3840;
+const int ny = 2160;
 const int ns = 500;
 const int MAX_BOUNCES = 50;
-const int NUM_THREADS = 8;
+const int NUM_THREADS = 6;
 const int TILE_MAX_HEIGHT = 32;
 const int TILE_MAX_WIDTH = 32;
 const bool DO_ANIMATE = false;
+const bool WRITE_OUTPUT = true;
 
 struct Tile
 {
@@ -159,20 +160,36 @@ void writeOutput() {
 
 	char * pOut = outputData;
 
-	for (int j = ny-1; j >=0; j--) {
-		for (int i = 0; i < nx; i++) {
-			auto & col = resultBuffer[j * nx + i];
-			int ir = int(255.99 * (col[0]));
-			int ig = int(255.99 * (col[1]));
-			int ib = int(255.99 * (col[2]));
-			*pOut++ = char(ib);
-			*pOut++ = char(ig);
-			*pOut++ = char(ir);
-			*pOut++ = 0;
+	if (WRITE_OUTPUT)
+	{
+		for (int j = ny - 1; j >= 0; j--) {
+			for (int i = 0; i < nx; i++) {
+				auto & col = resultBuffer[j * nx + i];
+				int ir = int(255.99 * (col[0]));
+				int ig = int(255.99 * (col[1]));
+				int ib = int(255.99 * (col[2]));
+				*pOut++ = char(ir);
+				*pOut++ = char(ig);
+				*pOut++ = char(ib);
+			}
+		}
+
+		stbi_write_png("output.png", nx, ny, 3, outputData, nx * 3);
+	}
+	else {
+		for (int j = ny - 1; j >= 0; j--) {
+			for (int i = 0; i < nx; i++) {
+				auto & col = resultBuffer[j * nx + i];
+				int ir = int(255.99 * (col[0]));
+				int ig = int(255.99 * (col[1]));
+				int ib = int(255.99 * (col[2]));
+				*pOut++ = char(ib);
+				*pOut++ = char(ig);
+				*pOut++ = char(ir);
+				*pOut++ = 0;
+			}
 		}
 	}
-
-	//stbi_write_png("output.png", nx, ny, 3, outputData, nx * 3);
 }
 
 void render()
@@ -267,7 +284,7 @@ int main(int argc, char* argv[]) {
 	SDL_Window *MainWindow = SDL_CreateWindow("My Game Window",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
-		1200, 800,
+		320, 240,
 		SDL_WINDOW_SHOWN
 	);
 
@@ -299,6 +316,16 @@ int main(int argc, char* argv[]) {
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
 			case SDL_KEYDOWN:
+				switch (ev.key.keysym.sym) {
+				case SDLK_UP:
+					lookfrom = vec3(lookfrom[0], lookfrom[1], lookfrom[2] + 0.1f);
+					cam.setup(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx) / float(ny), aperture, dist_to_focus);
+					break;
+				case SDLK_DOWN:
+					lookfrom = vec3(lookfrom[0], lookfrom[1], lookfrom[2] - 0.1f);
+					cam.setup(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx) / float(ny), aperture, dist_to_focus);
+					break;
+				}
 				break;
 
 			case SDL_QUIT:
