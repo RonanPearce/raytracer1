@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include "sphere.h"
+#include "moving_sphere.h"
 #include "hitable_list.h"
 #include "camera.h"
 #include "metal.h"
@@ -24,15 +25,15 @@
 #include "stb_image_write.h"
 
 
-const int nx = 3840;
-const int ny = 2160;
-const int ns = 500;
+const int nx = 640;//3840;
+const int ny = 480; // 2160;
+const int ns = 50;
 const int MAX_BOUNCES = 50;
-const int NUM_THREADS = 6;
+const int NUM_THREADS = 8;
 const int TILE_MAX_HEIGHT = 32;
 const int TILE_MAX_WIDTH = 32;
 const bool DO_ANIMATE = false;
-const bool WRITE_OUTPUT = true;
+const bool WRITE_OUTPUT = false;
 
 struct Tile
 {
@@ -110,9 +111,9 @@ hitable * world;
 vec3 lookfrom(13.0f, 2.0f, 3.0f);
 vec3 lookat(0.0f, 0.0f, 0.0f);
 float dist_to_focus = 10.0f;
-float aperture = 0.1f;
+float aperture = 0.05f;
 
-camera cam(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx)/float(ny), aperture, dist_to_focus);
+camera cam(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx)/float(ny), aperture, dist_to_focus, 0.0f, 1.0f);
 float R = cos(float(M_PI) / 4.0f);
 vec3 resultBuffer[nx *ny];
 std::vector<Tile> tiles;
@@ -249,17 +250,17 @@ void render()
 }
 
 hitable * random_scene() {
-	int n = 500;
+	int n = 50000;
 	hitable ** list = new hitable*[n + 1];
 	list[0] = new sphere(vec3(0.0f, -1000.f, 0.0f), 1000.0f, new lambertian(vec3(0.5f, 0.5f, 0.5f)));
 	int i = 1;
-	for (int a = -11; a < 11; a++) {
-		for (int b = -11; b < 11; b++) {
+	for (int a = -10; a < 10; a++) {
+		for (int b = -10; b < 10; b++) {
 			float choose_mat = float(drand48());
 			vec3 center(a + 0.9f * float(drand48()), 0.2f, b + 0.9f * float(drand48()));
 			if ((center - vec3(4.0f, 0.2f, 0.0f)).length() > 0.9f) {
 				if (choose_mat < 0.8f) {
-					list[i++] = new sphere(center, 0.2f, new lambertian(vec3(float(drand48() * drand48()), float(drand48() * drand48()), float(drand48() * drand48()))));
+					list[i++] = new moving_sphere(center, center + vec3(0.0f, float(0.2 * drand48()), 0.0f), 0.0f, 1.0f, 0.2f, new lambertian(vec3(float(drand48() * drand48()), float(drand48() * drand48()), float(drand48() * drand48()))));
 				}
 				else if (choose_mat < 0.95f) {
 					list[i++] = new sphere(center, 0.2f, new metal(vec3(0.5f *(1.0f + float(drand48())), 0.5f*(1.0f + float(drand48())), 0.5f*(1.0f + float(drand48()))), 0.5f * float(drand48())));
@@ -284,7 +285,7 @@ int main(int argc, char* argv[]) {
 	SDL_Window *MainWindow = SDL_CreateWindow("My Game Window",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
-		320, 240,
+		nx, ny,
 		SDL_WINDOW_SHOWN
 	);
 
@@ -319,11 +320,11 @@ int main(int argc, char* argv[]) {
 				switch (ev.key.keysym.sym) {
 				case SDLK_UP:
 					lookfrom = vec3(lookfrom[0], lookfrom[1], lookfrom[2] + 0.1f);
-					cam.setup(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx) / float(ny), aperture, dist_to_focus);
+					cam.setup(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx) / float(ny), aperture, dist_to_focus, 0.0f, 1.0f);
 					break;
 				case SDLK_DOWN:
 					lookfrom = vec3(lookfrom[0], lookfrom[1], lookfrom[2] - 0.1f);
-					cam.setup(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx) / float(ny), aperture, dist_to_focus);
+					cam.setup(lookfrom, lookat, vec3(0.0f, 1.0f, 0.0f), 20.0f, float(nx) / float(ny), aperture, dist_to_focus, 0.0f, 1.0f);
 					break;
 				}
 				break;
