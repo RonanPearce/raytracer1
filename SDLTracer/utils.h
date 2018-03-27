@@ -3,11 +3,14 @@
 
 #include <cstdio>
 #include <cstring>
-#include "vec3.h"
+#include "ray.h"
 
 inline double drand48() {
 	return double(rand()) / double(RAND_MAX);
 }
+
+inline float ffmin(float a, float b) { return a < b ? a : b; }
+inline float ffmax(float a, float b) { return a > b ? a : b; }
 
 vec3 random_in_unit_sphere() {
 	vec3 p;

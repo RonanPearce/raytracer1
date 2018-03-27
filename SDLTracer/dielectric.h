@@ -30,14 +30,14 @@ public:
 			reflect_prob = schlick(cosine, ref_idx);
 		}
 		else {
-			scattered = ray(rec.p, reflected);
+			scattered = ray(rec.p, reflected, r_in.time());
 			reflect_prob = 1.0f;
 		}
 		if (drand48() < reflect_prob) {
-			scattered = ray(rec.p, reflected);
+			scattered = ray(rec.p, reflected, r_in.time());
 		}
 		else {
-			scattered = ray(rec.p, refracted);
+			scattered = ray(rec.p, refracted, r_in.time());
 		}
 		return true;
 	}

@@ -5,6 +5,7 @@
 #include "sphere.h"
 #include "moving_sphere.h"
 #include "hitable_list.h"
+#include "bvh.h"
 #include "camera.h"
 #include "metal.h"
 #include "lambertian.h"
@@ -27,7 +28,7 @@
 
 const int nx = 640;//3840;
 const int ny = 480; // 2160;
-const int ns = 50;
+const int ns = 500;
 const int MAX_BOUNCES = 50;
 const int NUM_THREADS = 8;
 const int TILE_MAX_HEIGHT = 32;
@@ -275,7 +276,9 @@ hitable * random_scene() {
 	list[i++] = new sphere(vec3(-4.0f, 1.0f, 0.0f), 1.0f, new lambertian(vec3(0.4f, 0.2f, 0.1f)));
 	list[i++] = new sphere(vec3(4.0f, 1.0f, 0.0f), 1.0f, new metal(vec3(0.7f, 0.6f, 0.5f), 0.0f));
 
-	return new hitable_list(list, i);
+	//return new hitable_list(list, i);
+
+	return new bvh_node(list, i, 0.0, 1.0);
 }
 
 int main(int argc, char* argv[]) {
@@ -285,7 +288,7 @@ int main(int argc, char* argv[]) {
 	SDL_Window *MainWindow = SDL_CreateWindow("My Game Window",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
-		nx, ny,
+		640, (640 * ny) / nx,
 		SDL_WINDOW_SHOWN
 	);
 
