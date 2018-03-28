@@ -26,15 +26,16 @@
 #include "stb_image_write.h"
 
 
-const int nx = 640;//3840;
-const int ny = 480; // 2160;
-const int ns = 500;
+const int nx = 3840;
+const int ny = 2160;
+const int ns = 10000;
 const int MAX_BOUNCES = 50;
 const int NUM_THREADS = 8;
 const int TILE_MAX_HEIGHT = 32;
 const int TILE_MAX_WIDTH = 32;
 const bool DO_ANIMATE = false;
-const bool WRITE_OUTPUT = false;
+const bool WRITE_OUTPUT = true;
+const float PROGRESS_DRAW_DELAY = 10000.0f;
 
 struct Tile
 {
@@ -161,35 +162,34 @@ void writeOutput() {
 	//"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GIMP 2.lnk" "C:\Users\Ronan\Documents\Visual Studio 2017\Projects\RayTracerOneWeekend\RayTracerOneWeekend\output.png"
 
 	char * pOut = outputData;
-
-	if (WRITE_OUTPUT)
-	{
-		for (int j = ny - 1; j >= 0; j--) {
-			for (int i = 0; i < nx; i++) {
-				auto & col = resultBuffer[j * nx + i];
-				int ir = int(255.99 * (col[0]));
-				int ig = int(255.99 * (col[1]));
-				int ib = int(255.99 * (col[2]));
-				*pOut++ = char(ir);
-				*pOut++ = char(ig);
-				*pOut++ = char(ib);
-			}
+	for (int j = ny - 1; j >= 0; j--) {
+		for (int i = 0; i < nx; i++) {
+			auto & col = resultBuffer[j * nx + i];
+			int ir = int(255.99 * (col[0]));
+			int ig = int(255.99 * (col[1]));
+			int ib = int(255.99 * (col[2]));
+			*pOut++ = char(ir);
+			*pOut++ = char(ig);
+			*pOut++ = char(ib);
 		}
-
-		stbi_write_png("output.png", nx, ny, 3, outputData, nx * 3);
 	}
-	else {
-		for (int j = ny - 1; j >= 0; j--) {
-			for (int i = 0; i < nx; i++) {
-				auto & col = resultBuffer[j * nx + i];
-				int ir = int(255.99 * (col[0]));
-				int ig = int(255.99 * (col[1]));
-				int ib = int(255.99 * (col[2]));
-				*pOut++ = char(ib);
-				*pOut++ = char(ig);
-				*pOut++ = char(ir);
-				*pOut++ = 0;
-			}
+
+	stbi_write_png("output.png", nx, ny, 3, outputData, nx * 3);
+
+}
+
+void displayOutput() {
+	char * pOut = outputData;
+	for (int j = ny - 1; j >= 0; j--) {
+		for (int i = 0; i < nx; i++) {
+			auto & col = resultBuffer[j * nx + i];
+			int ir = int(255.99 * (col[0]));
+			int ig = int(255.99 * (col[1]));
+			int ib = int(255.99 * (col[2]));
+			*pOut++ = char(ib);
+			*pOut++ = char(ig);
+			*pOut++ = char(ir);
+			*pOut++ = 0;
 		}
 	}
 }
@@ -337,18 +337,20 @@ int main(int argc, char* argv[]) {
 				break;
 			}
 		}
-		{
-			std::unique_lock<std::mutex> lock(jobDoneMutex);
-			jobsDoneCondition.wait(lock, []() {return remainingJobs.load() == 0; });
-		}
-		writeOutput();
+		
+		displayOutput();
 		SDL_UpdateTexture(Tile, NULL, outputData, nx * 4);
 
 		SDL_RenderCopy(renderer, Tile, NULL, NULL);
 		SDL_RenderPresent(renderer);
 
 		if (DO_ANIMATE) {
+			std::unique_lock<std::mutex> lock(jobDoneMutex);
+			jobsDoneCondition.wait(lock, []() {return remainingJobs.load() == 0; });
 			render();
+		}
+		else {
+			SDL_Delay(PROGRESS_DRAW_DELAY);
 		}
 	}
 
@@ -364,12 +366,16 @@ int main(int argc, char* argv[]) {
 		threads[i].join();
 	}
 
+	if (WRITE_OUTPUT) {
+		writeOutput();
+	}
+
 	auto end = std::chrono::system_clock::now();
 	std::chrono::duration<double> elapsed_seconds = end - start;
 
-	//std::cout << "Time taken: " << elapsed_seconds.count() << std::endl
-	//	<< "Press any key to continue..." << std::endl;
-	//_getch();
+	std::cout << "Time taken: " << elapsed_seconds.count() << std::endl
+		<< "Press any key to continue..." << std::endl;
+	_getch();
 
 	//Clean up
 	SDL_DestroyTexture(Tile);
