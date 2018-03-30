@@ -26,16 +26,18 @@
 #include "stb_image_write.h"
 
 
-const int nx = 3840;
-const int ny = 2160;
-const int ns = 10000;
-const int MAX_BOUNCES = 50;
-const int NUM_THREADS = 8;
+const int nx = 384;
+const int ny = 216;
+const int ns = 25000;
+const int MAX_BOUNCES = 100;
+const int NUM_THREADS = 14;
 const int TILE_MAX_HEIGHT = 32;
 const int TILE_MAX_WIDTH = 32;
 const bool DO_ANIMATE = false;
 const bool WRITE_OUTPUT = true;
-const float PROGRESS_DRAW_DELAY = 10000.0f;
+const double PROGRESS_DRAW_DELAY = 5000;
+bool quit = false;
+
 
 struct Tile
 {
@@ -62,23 +64,25 @@ std::deque<JobInfo> jobQueue;
 std::atomic<int> remainingJobs = 0;
 
 void runThread() {
-	while (true) {
+	while (!quit) {
+		//std::cout << "Waiting for job" << std::endl;
 		JobInfo job;
 		{
 			std::unique_lock<std::mutex> lock(jobMutex);
-			jobQueueCondition.wait(lock, [] {return !jobQueue.empty(); });
+			jobQueueCondition.wait(lock, [] {return quit || !jobQueue.empty(); });
+			if (quit) {
+				return;
+			}
 			job = jobQueue.front();
 			jobQueue.pop_front();
-		}
-		if (job.stop) {
-			remainingJobs--;
-			jobsDoneCondition.notify_one();
-			return;
+			//std::cout << "Taking job: " << job.tileIndex << ", " << job.n <<std::endl;
 		}
 		job.fn(job.tileIndex, job.n);
 		remainingJobs--;
+		jobQueueCondition.notify_all();
 		jobsDoneCondition.notify_one();
 	}
+	//std::cout << "Quitting!" << std::endl;
 }
 
 void addJob(const JobInfo & newJob) {
@@ -122,6 +126,7 @@ std::vector<Tile> tiles;
 
 void task(int tileIndex, int n) {
 
+	const double nsDouble = double(ns);
 	//std::cout << "TileSpan: " << tileIndex << "," << tileIndex + n << std::endl;
 	for (int i = tileIndex; i < tileIndex + n; i++) {
 		const Tile& tile = tiles[i];
@@ -138,30 +143,34 @@ void task(int tileIndex, int n) {
 		for (int j = startJ; j < endJ; j++) {
 			vec3* pBuff = &(resultBuffer[j * nx + startI]);
 			for (int i = startI; i < endI; i++) {
-				vec3 col(0.0f, 0.0f, 0.0f);
+				double col0 = 0;
+				double col1 = 0;
+				double col2 = 0;
 				for (int s = 0; s < ns; s++) {
 					float u = float(i + drand48()) / float(nx);
 					float v = float(j + drand48()) / float(ny);
 					ray r = cam.get_ray(u, v);
 					vec3 p = r.point_at_parameter(2.0f);
-					col += color(r, world, 0);
+					vec3 col = color(r, world, 0);
+					col0 += col[0];
+					col1 += col[1];
+					col2 += col[2];
 				}
-				col /= float(ns);
-				(*pBuff)[0] = col[0];
-				(*pBuff)[1] = col[1];
-				(*pBuff)[2] = col[2];
+				(*pBuff)[0] = (float(col0 / nsDouble));
+				(*pBuff)[1] = (float(col1 / nsDouble));
+				(*pBuff)[2] = (float(col2 / nsDouble));
 				pBuff++;
 			}
 		}
 	}
 }
 
-char * outputData = new char[nx * ny * 4];
+char * writeOutputData = new char[nx * ny * 3];
 void writeOutput() {
 	//	Execute Gimp
 	//"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GIMP 2.lnk" "C:\Users\Ronan\Documents\Visual Studio 2017\Projects\RayTracerOneWeekend\RayTracerOneWeekend\output.png"
 
-	char * pOut = outputData;
+	char * pOut = writeOutputData;
 	for (int j = ny - 1; j >= 0; j--) {
 		for (int i = 0; i < nx; i++) {
 			auto & col = resultBuffer[j * nx + i];
@@ -174,12 +183,13 @@ void writeOutput() {
 		}
 	}
 
-	stbi_write_png("output.png", nx, ny, 3, outputData, nx * 3);
+	stbi_write_png("output.png", nx, ny, 3, writeOutputData, nx * 3);
 
 }
 
+char * displayOutputData = new char[nx * ny * 4];
 void displayOutput() {
-	char * pOut = outputData;
+	char * pOut = displayOutputData;
 	for (int j = ny - 1; j >= 0; j--) {
 		for (int i = 0; i < nx; i++) {
 			auto & col = resultBuffer[j * nx + i];
@@ -227,41 +237,31 @@ void render()
 	const int divTiles = numTiles / NUM_THREADS;
 	const int modTiles = numTiles % NUM_THREADS;
 
-	int curTile = 0;
-	int curThread = 0;
 	remainingJobs = 0;
-	for (; (curThread < modTiles) && (curTile < numTiles); ++curThread) {
+	for (int curTile = 0; curTile < numTiles; ++curTile) {
 		JobInfo jobInfo;
 		jobInfo.fn = task;
 		jobInfo.stop = false;
 		jobInfo.tileIndex = curTile;
-		jobInfo.n = 1 + divTiles;
+		jobInfo.n = 1;
+		jobInfo.n = 1;
 		addJob(jobInfo);
-		curTile += 1 + divTiles;
-	}
-	for (; (curThread < NUM_THREADS) && (curTile < numTiles); ++curThread) {
-		JobInfo jobInfo;
-		jobInfo.fn = task;
-		jobInfo.stop = false;
-		jobInfo.tileIndex = curTile;
-		jobInfo.n = divTiles;
-		addJob(jobInfo);
-		curTile += divTiles;
 	}
 }
 
 hitable * random_scene() {
 	int n = 50000;
 	hitable ** list = new hitable*[n + 1];
-	list[0] = new sphere(vec3(0.0f, -1000.f, 0.0f), 1000.0f, new lambertian(vec3(0.5f, 0.5f, 0.5f)));
+	list[0] = new sphere(vec3(0.0f, -1000.f, 0.0f), 1000.0f, new metal(vec3(0.25f, 0.6f, 0.25f), 0.8f));
+	//list[0] = new sphere(vec3(0.0f, -1000.f, 0.0f), 1000.0f, new dielectric(1.5f));
 	int i = 1;
 	for (int a = -10; a < 10; a++) {
 		for (int b = -10; b < 10; b++) {
 			float choose_mat = float(drand48());
-			vec3 center(a + 0.9f * float(drand48()), 0.2f, b + 0.9f * float(drand48()));
+			vec3 center(a + 0.9f * float(drand48()), 0.15f, b + 0.9f * float(drand48()));
 			if ((center - vec3(4.0f, 0.2f, 0.0f)).length() > 0.9f) {
 				if (choose_mat < 0.8f) {
-					list[i++] = new moving_sphere(center, center + vec3(0.0f, float(0.2 * drand48()), 0.0f), 0.0f, 1.0f, 0.2f, new lambertian(vec3(float(drand48() * drand48()), float(drand48() * drand48()), float(drand48() * drand48()))));
+					list[i++] = new sphere(center, 0.2f, new lambertian(vec3(float(drand48() * drand48()), float(drand48() * drand48() * 0.6f), float(drand48() * drand48()))));
 				}
 				else if (choose_mat < 0.95f) {
 					list[i++] = new sphere(center, 0.2f, new metal(vec3(0.5f *(1.0f + float(drand48())), 0.5f*(1.0f + float(drand48())), 0.5f*(1.0f + float(drand48()))), 0.5f * float(drand48())));
@@ -300,22 +300,22 @@ int main(int argc, char* argv[]) {
 
 	SDL_Texture *Tile = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
 		SDL_TEXTUREACCESS_STREAMING, nx, ny);
-	
-	world = random_scene();
 
+
+	auto start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+	srand(start.count());
+
+	world = random_scene();
+	
 	for (int i = 0; i < NUM_THREADS; i++)
 	{
 		threads.push_back(std::thread(runThread));
 	}
 
-	auto start = std::chrono::system_clock::now();
-
-	//srand(start.time_since_epoch().count());
-
 
 	SDL_Event ev;
-	bool quit = false;
 	render();
+	double timeAtLastDraw = 0;
 	while (!quit) {
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
@@ -338,29 +338,28 @@ int main(int argc, char* argv[]) {
 			}
 		}
 		
-		displayOutput();
-		SDL_UpdateTexture(Tile, NULL, outputData, nx * 4);
-
-		SDL_RenderCopy(renderer, Tile, NULL, NULL);
-		SDL_RenderPresent(renderer);
-
 		if (DO_ANIMATE) {
 			std::unique_lock<std::mutex> lock(jobDoneMutex);
 			jobsDoneCondition.wait(lock, []() {return remainingJobs.load() == 0; });
 			render();
+			SDL_Delay(1);
 		}
 		else {
-			SDL_Delay(PROGRESS_DRAW_DELAY);
+			auto cur = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+			double timeSinceStart = (cur - start).count();
+			if (timeSinceStart - timeAtLastDraw >= PROGRESS_DRAW_DELAY) {
+				displayOutput();
+				SDL_UpdateTexture(Tile, NULL, displayOutputData, nx * 4);
+				SDL_RenderCopy(renderer, Tile, NULL, NULL);
+				SDL_RenderPresent(renderer);
+				timeAtLastDraw = timeSinceStart;
+			}
+			SDL_Delay(67);
 		}
 	}
 
 	// Stop jobs
-	JobInfo jobInfo;
-	for (int i = 0; i < NUM_THREADS; i++) {
-		JobInfo jobInfo;
-		jobInfo.stop = true;
-		addJob(jobInfo);
-	}
+	jobQueueCondition.notify_all();
 	for (int i = 0; i < NUM_THREADS; i++)
 	{
 		threads[i].join();
@@ -370,7 +369,7 @@ int main(int argc, char* argv[]) {
 		writeOutput();
 	}
 
-	auto end = std::chrono::system_clock::now();
+	auto end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 	std::chrono::duration<double> elapsed_seconds = end - start;
 
 	std::cout << "Time taken: " << elapsed_seconds.count() << std::endl
